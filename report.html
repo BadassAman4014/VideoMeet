@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient Monitoring Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            background-color: #f0f4f8;
+            color: #333;
+        }
+        header {
+            background-color: #007bff;
+            color: #fff;
+            padding: 20px;
+            text-align: center;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        header h1 {
+            margin: 0;
+            font-size: 1.8em;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 10px;
+        }
+        .search-bar {
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .search-bar input {
+            width: 80%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1em;
+        }
+        .card {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1.2em;
+            color: #007bff;
+            margin-bottom: 10px;
+        }
+        .card-header span {
+            font-size: 0.9em;
+            color: #666;
+        }
+        .subheader {
+            font-weight: bold;
+            margin-top: 15px;
+            color: #444;
+            font-size: 1.1em;
+        }
+        .content {
+            margin-top: 5px;
+            line-height: 1.5;
+        }
+        .actions {
+            margin-top: 10px;
+            display: flex;
+            justify-content: flex-end;
+        }
+        .actions button {
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            padding: 8px 12px;
+            margin-left: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .actions button:hover {
+            background-color: #0056b3;
+        }
+        .expandable {
+            max-height: 100px;
+            overflow: hidden;
+            position: relative;
+        }
+        .expandable.expanded {
+            max-height: none;
+        }
+        .expandable::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 30px;
+            background: linear-gradient(transparent, #fff);
+        }
+        .expandable.expanded::after {
+            display: none;
+        }
+        .reviewed {
+            border-left: 5px solid #28a745;
+        }
+        .summary-list {
+            margin-top: 5px;
+            padding-left: 20px;
+        }
+        .summary-list li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Patient Monitoring Report</h1>
+    </header>
+
+    <div class="container">
+        <div class="search-bar">
+            <input type="text" id="search" placeholder="Search by patient name, date, or symptoms..." oninput="filterCards()">
+        </div>
+
+        <div id="patient-cards">
+            <!-- Patient cards will be dynamically added here -->
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script>
+        async function loadJSON() {
+            try {
+                const response = await fetch('data/transcriptions.json'); // Adjust the path as needed
+                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                const data = await response.json();
+
+                const container = document.getElementById('patient-cards');
+                data.forEach(entry => {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.dataset.username = entry.Username.toLowerCase();
+                    card.dataset.date = entry.Date;
+                    card.dataset.transcription = entry.Transcription.toLowerCase();
+
+                    const formattedSummary = formatSummary(entry.Summary);
+
+                    card.innerHTML = `
+                        <div class="card-header">
+                            <div>Patient Name: ${entry.Username}</div>
+                            <span>Date: ${entry.Date} | Time: ${entry.Time}</span>
+                        </div>
+                        <div class="subheader">Transcription:</div>
+                        <div class="content expandable transcription">${entry.Transcription}</div>
+                        <div class="subheader">Summary:</div>
+                        <div class="content">${formattedSummary}</div>
+                        <div class="actions">
+                            <button onclick="toggleExpand(this)">Expand</button>
+                            <button onclick="exportPNG(this, '${entry.Username}')">Share</button>
+                            <button onclick="markReviewed(this)">Mark as Reviewed</button>
+                        </div>
+                    `;
+                    container.appendChild(card);
+                });
+            } catch (error) {
+                console.error('Error loading JSON:', error);
+                const container = document.getElementById('patient-cards');
+                container.innerHTML = `<p style="color: red;">Failed to load data. Please check the console for details.</p>`;
+            }
+        }
+
+        function formatSummary(summary) {
+            const lines = summary.split('*').filter(line => line.trim() !== '');
+            const listItems = lines.map(line => `<li>${line.trim()}</li>`).join('');
+            return `<ul class="summary-list">${listItems}</ul>`;
+        }
+
+        function toggleExpand(button) {
+            const expandable = button.closest('.card').querySelector('.transcription');
+            expandable.classList.toggle('expanded');
+            button.textContent = expandable.classList.contains('expanded') ? 'Collapse' : 'Expand';
+        }
+
+        function exportPNG(button, username) {
+            const card = button.closest('.card');
+            html2canvas(card).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `${username}_report.png`;
+                link.href = canvas.toDataURL();
+                link.click();
+            });
+        }
+
+        function markReviewed(button) {
+            const card = button.closest('.card');
+            card.classList.toggle('reviewed');
+            button.textContent = card.classList.contains('reviewed') ? 'Unmark Reviewed' : 'Mark as Reviewed';
+        }
+
+        function filterCards() {
+            const query = document.getElementById('search').value.toLowerCase();
+            const cards = document.querySelectorAll('.card');
+
+            cards.forEach(card => {
+                const username = card.dataset.username;
+                const date = card.dataset.date;
+                const transcription = card.dataset.transcription;
+
+                if (username.includes(query) || date.includes(query) || transcription.includes(query)) {
+                    card.style.display = '';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+
+        loadJSON();
+    </script>
+</body>
+</html>
